@@ -42,6 +42,9 @@ npm test          # node --test，18 个用例，无需先启动服务
   缺少修补照片（`afterPhotoUrl`）或修补结果（`repairNote`）返回 **422 且整批回滚**；
   夹带不属于本批次的缺损项返回 400。
 - **重复完工不能覆盖记录**：批次完工是终态，再次完工返回 409，首次照片/结果/时间戳保持不变。
+- **字段类型强校验**：所有文本与照片字段（编号/来源/纸幅/位置/类型/照片地址/批次名/修补说明）
+  必须是非空字符串；数组（含 `[]`）、对象、数字、布尔、null 一律返回 `400 E_INVALID_TYPE`
+  并在 `details` 中标出字段与实际类型，且不落库。区分于“类型合法但完工缺照片/说明”的 422。
 
 ## 一致性实现
 
@@ -122,7 +125,8 @@ npm test          # node --test，18 个用例，无需先启动服务
 
 | HTTP | code | 触发场景 |
 |---|---|---|
-| 400 | `E_MISSING_FIELD` / `E_BAD_JSON` | 缺必填字段 / JSON 非法 |
+| 400 | `E_MISSING_FIELD` / `E_BAD_JSON` | 缺必填字段/字段为空字符串 / JSON 非法 |
+| 400 | `E_INVALID_TYPE` | 文本或照片字段收到数组/对象/数字/布尔/null（必须是非空字符串），错误响应 details 指明具体字段与实际类型 |
 | 400 | `E_DUPLICATE_IN_REQUEST` | damageIds 或 results 内部重复 |
 | 400 | `E_INVALID_DAMAGE_IDS` / `E_INVALID_RESULTS` | 字段不是非空数组 |
 | 400 | `E_RESULT_NOT_IN_BATCH` | 完工结果夹带非本批缺损项 |

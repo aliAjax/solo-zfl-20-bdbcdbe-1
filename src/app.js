@@ -31,15 +31,41 @@ function makeId(prefix) {
   return `${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
 }
 
-function isBlank(value) {
-  return value === undefined || value === null || (typeof value === "string" && value.trim() === "");
-}
-
+/** 必填字段：必须是“非空白字符串”。数组/对象/数字/布尔/null 一律拒绝。 */
 function requireFields(body, fields) {
-  const missing = fields.filter((f) => isBlank(body[f]));
+  const missing = [];
+  const wrongType = [];
+  for (const field of fields) {
+    const value = body[field];
+    if (value === undefined || (typeof value === "string" && value.trim() === "")) {
+      missing.push(field);
+    } else if (typeof value !== "string") {
+      wrongType.push({ field, actual: Array.isArray(value) ? "array" : value === null ? "null" : typeof value });
+    }
+  }
   if (missing.length) {
     throw new ApiError(400, "E_MISSING_FIELD", `缺少必填字段：${missing.join(", ")}`, { missing });
   }
+  if (wrongType.length) {
+    throw new ApiError(
+      400,
+      "E_INVALID_TYPE",
+      `字段必须是非空字符串：${wrongType.map((i) => i.field).join(", ")}`,
+      { fields: wrongType }
+    );
+  }
+}
+
+/** 可选字符串字段：undefined 落默认值；给了就必须是字符串（数组/对象等拒绝）。 */
+function optionalString(body, field, fallback = "") {
+  const value = body[field];
+  if (value === undefined) return fallback;
+  if (typeof value !== "string") {
+    throw new ApiError(400, "E_INVALID_TYPE", `字段必须是字符串：${field}`, {
+      fields: [{ field, actual: Array.isArray(value) ? "array" : typeof value }]
+    });
+  }
+  return value.trim();
 }
 
 function createHandler(store) {
@@ -114,16 +140,16 @@ function createHandler(store) {
 
   function createRubbing(db, body) {
     requireFields(body, ["code", "source", "paperSize"]);
-    const code = String(body.code).trim();
+    const code = body.code.trim();
     if (db.rubbings.some((r) => r.code === code)) {
       throw new ApiError(409, "E_CODE_DUPLICATE", `拓片编号已存在：${code}`);
     }
     const rubbing = {
       id: makeId("rubbing"),
       code,
-      source: String(body.source).trim(),
-      paperSize: String(body.paperSize).trim(),
-      note: typeof body.note === "string" ? body.note.trim() : "",
+      source: body.source.trim(),
+      paperSize: body.paperSize.trim(),
+      note: optionalString(body, "note"),
       createdAt: new Date().toISOString()
     };
     db.rubbings.push(rubbing);
@@ -137,9 +163,9 @@ function createHandler(store) {
     const damage = {
       id: makeId("damage"),
       rubbingId,
-      position: String(body.position).trim(),
-      type: String(body.type).trim(),
-      beforePhotoUrl: String(body.beforePhotoUrl).trim(),
+      position: body.position.trim(),
+      type: body.type.trim(),
+      beforePhotoUrl: body.beforePhotoUrl.trim(),
       afterPhotoUrl: "",
       status: "pending",
       repairNote: "",
@@ -172,10 +198,15 @@ function createHandler(store) {
     }
     for (const field of ["position", "type", "beforePhotoUrl"]) {
       if (body[field] !== undefined) {
-        if (isBlank(body[field])) {
+        if (typeof body[field] !== "string") {
+          throw new ApiError(400, "E_INVALID_TYPE", `字段必须是非空字符串：${field}`, {
+            fields: [{ field, actual: Array.isArray(body[field]) ? "array" : typeof body[field] }]
+          });
+        }
+        if (body[field].trim() === "") {
           throw new ApiError(400, "E_MISSING_FIELD", `字段不能为空：${field}`, { field });
         }
-        damage[field] = String(body[field]).trim();
+        damage[field] = body[field].trim();
       }
     }
     return damage;
@@ -189,28 +220,40 @@ function createHandler(store) {
    * 收录即刻占用缺损项（写 batchId），但状态仍为 pending，开工后才变 in_repair。
    */
   function createBatch(db, body) {
-    requireFields(body, ["name", "damageIds"]);
-    const name = String(body.name).trim();
+    requireFields(body, ["name"]);
+    const name = body.name.trim();
     const damageIds = body.damageIds;
     if (!Array.isArray(damageIds) || damageIds.length === 0) {
       throw new ApiError(400, "E_INVALID_DAMAGE_IDS", "damageIds 必须是非空数组");
     }
+    const badIndex = damageIds
+      .map((id, index) => index)
+      .filter((index) => {
+        const id = damageIds[index];
+        return typeof id !== "string" || id.trim() === "";
+      });
+    if (badIndex.length) {
+      throw new ApiError(400, "E_INVALID_TYPE", "damageIds 的每一项必须是非空字符串 id", {
+        index: badIndex
+      });
+    }
+    const ids = damageIds.map((id) => id.trim());
 
-    const repeated = damageIds.filter((id, i) => damageIds.indexOf(id) !== i);
+    const repeated = ids.filter((id, i) => ids.indexOf(id) !== i);
     if (repeated.length) {
       throw new ApiError(400, "E_DUPLICATE_IN_REQUEST", "提交列表中存在重复缺损项", {
         repeated: [...new Set(repeated)]
       });
     }
 
-    const notFound = damageIds.filter((id) => !db.damages.some((d) => d.id === id));
+    const notFound = ids.filter((id) => !db.damages.some((d) => d.id === id));
     if (notFound.length) {
       throw new ApiError(404, "E_DAMAGE_NOT_FOUND", `缺损项不存在：${notFound.join(", ")}`, {
         notFound
       });
     }
 
-    const items = damageIds.map((id) => db.damages.find((d) => d.id === id));
+    const items = ids.map((id) => db.damages.find((d) => d.id === id));
 
     const rubbingIds = [...new Set(items.map((d) => d.rubbingId))];
     if (rubbingIds.length > 1) {
@@ -246,8 +289,8 @@ function createHandler(store) {
       name,
       rubbingId: rubbingIds[0],
       status: "open",
-      damageIds: [...damageIds],
-      note: typeof body.note === "string" ? body.note.trim() : "",
+      damageIds: ids,
+      note: optionalString(body, "note"),
       createdAt: now,
       startedAt: null,
       completedAt: null
@@ -295,13 +338,47 @@ function createHandler(store) {
     }
 
     const results = body.results;
-    if (!Array.isArray(results)) {
-      throw new ApiError(400, "E_INVALID_RESULTS", "results 必须是数组");
+    if (!Array.isArray(results) || results.length === 0) {
+      throw new ApiError(400, "E_INVALID_RESULTS", "results 必须是非空数组");
+    }
+    if (body.note !== undefined && typeof body.note !== "string") {
+      throw new ApiError(400, "E_INVALID_TYPE", "字段必须是字符串：note", {
+        fields: [{ field: "note", actual: Array.isArray(body.note) ? "array" : typeof body.note }]
+      });
+    }
+
+    // 结构/类型错误（不是对象、字段不是字符串、id 为空）→ 400，明确且不落库
+    const malformed = [];
+    for (let i = 0; i < results.length; i += 1) {
+      const r = results[i];
+      const entry = { index: i, fields: [] };
+      if (!r || typeof r !== "object" || Array.isArray(r)) {
+        entry.fields.push("entry");
+        malformed.push(entry);
+        continue;
+      }
+      for (const field of ["afterPhotoUrl", "repairNote"]) {
+        if (r[field] !== undefined && typeof r[field] !== "string") {
+          entry.fields.push(field);
+        }
+      }
+      if (typeof r.damageId !== "string" || r.damageId.trim() === "") {
+        entry.fields.push("damageId");
+      }
+      if (entry.fields.length) malformed.push(entry);
+    }
+    if (malformed.length) {
+      throw new ApiError(
+        400,
+        "E_INVALID_TYPE",
+        "results 每项必须是对象，且 damageId/afterPhotoUrl/repairNote 必须是字符串",
+        { items: malformed }
+      );
     }
 
     const repeated = results
-      .map((r) => r && r.damageId)
-      .filter((id, i, arr) => id !== undefined && arr.indexOf(id) !== i);
+      .map((r) => r.damageId.trim())
+      .filter((id, i, arr) => arr.indexOf(id) !== i);
     if (repeated.length) {
       throw new ApiError(400, "E_DUPLICATE_IN_REQUEST", "results 中存在重复缺损项", {
         repeated: [...new Set(repeated)]
@@ -309,21 +386,26 @@ function createHandler(store) {
     }
 
     const unknown = results
-      .filter((r) => !r || !batch.damageIds.includes(r.damageId))
-      .map((r) => (r && r.damageId) || null);
+      .filter((r) => !batch.damageIds.includes(r.damageId.trim()))
+      .map((r) => r.damageId.trim());
     if (unknown.length) {
       throw new ApiError(400, "E_RESULT_NOT_IN_BATCH", "results 包含不属于本批次的缺损项", {
         damageIds: unknown
       });
     }
 
-    const byId = new Map(results.map((r) => [r.damageId, r]));
+    // 结构合法但缺少非空照片/修补说明 → 422，整批不完工，批次保持处理中
+    const byId = new Map(results.map((r) => [r.damageId.trim(), r]));
     const incomplete = [];
     for (const id of batch.damageIds) {
       const r = byId.get(id);
       const missing = [];
-      if (!r || isBlank(r.afterPhotoUrl)) missing.push("afterPhotoUrl");
-      if (!r || isBlank(r.repairNote)) missing.push("repairNote");
+      if (!r || typeof r.afterPhotoUrl !== "string" || r.afterPhotoUrl.trim() === "") {
+        missing.push("afterPhotoUrl");
+      }
+      if (!r || typeof r.repairNote !== "string" || r.repairNote.trim() === "") {
+        missing.push("repairNote");
+      }
       if (missing.length) incomplete.push({ damageId: id, missing });
     }
     if (incomplete.length) {
@@ -340,14 +422,14 @@ function createHandler(store) {
       const damage = db.damages.find((d) => d.id === id);
       if (!damage || damage.status === "repaired") continue; // 防御性：终态不覆盖
       const r = byId.get(id);
-      damage.afterPhotoUrl = String(r.afterPhotoUrl).trim();
-      damage.repairNote = String(r.repairNote).trim();
+      damage.afterPhotoUrl = r.afterPhotoUrl.trim();
+      damage.repairNote = r.repairNote.trim();
       damage.status = "repaired";
       damage.repairedAt = now;
     }
     batch.status = "completed";
     batch.completedAt = now;
-    if (typeof body.note === "string") batch.note = body.note.trim();
+    if (typeof body.note === "string" && body.note.trim() !== "") batch.note = body.note.trim();
     return enrichBatch(db, batch);
   }
 
