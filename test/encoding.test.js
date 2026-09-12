@@ -10,7 +10,7 @@ const {
   createDamage,
   createBatch,
   goodResults
-} = require("./helpers");
+} = require("../testutil/helpers");
 
 /** 各种畸形百分号编码：均会让 decodeURIComponent 抛 URIError。 */
 const MALFORMED = ["%E0%A4%A", "%zz", "%", "%E4%B8%AD%E0", "abc%"];

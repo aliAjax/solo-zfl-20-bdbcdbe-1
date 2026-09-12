@@ -31,8 +31,14 @@ async function defaultPersist(file, json) {
   await rename(tmp, file);
 }
 
+/**
+ * 初始数据的固定时间戳：保证首次启动（写种子）与重复启动（读种子）结果一致，
+ * 也让随仓库交付的 data/db.json 可重复生成。
+ */
+const SEED_AT = "2026-01-01T00:00:00.000Z";
+
 function initialData() {
-  const now = new Date().toISOString();
+  const now = SEED_AT;
   return {
     rubbings: [
       {

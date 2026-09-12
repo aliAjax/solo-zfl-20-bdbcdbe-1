@@ -27,6 +27,24 @@ const ROUTES = [
 
 const MAX_BODY_BYTES = 1024 * 1024;
 
+/**
+ * 已支持的路径模板及方法，用于在未命中业务分支时区分：
+ * - 路径存在但方法不对 → 405 Method Not Allowed（带 Allow 头）
+ * - 路径不存在       → 404
+ * 顺序：更具体的子路径放在通配资源之前。
+ */
+const ROUTE_PATTERNS = [
+  { regex: /^\/health$/, methods: ["GET"] },
+  { regex: /^\/rubbings$/, methods: ["GET", "POST"] },
+  { regex: /^\/rubbings\/[^/]+\/damages$/, methods: ["GET", "POST"] },
+  { regex: /^\/damages$/, methods: ["GET"] },
+  { regex: /^\/damages\/[^/]+$/, methods: ["PATCH"] },
+  { regex: /^\/batches$/, methods: ["GET", "POST"] },
+  { regex: /^\/batches\/[^/]+\/start$/, methods: ["POST"] },
+  { regex: /^\/batches\/[^/]+\/complete$/, methods: ["POST"] },
+  { regex: /^\/batches\/[^/]+$/, methods: ["GET"] }
+];
+
 function makeId(prefix) {
   return `${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
 }
@@ -471,6 +489,20 @@ function createHandler(store) {
     };
 
     try {
+      // 路径命中已知资源但方法不被支持：405，附带允许的方法列表。
+      const matchedRoute = ROUTE_PATTERNS.find((p) => p.regex.test(pathname));
+      if (matchedRoute && !matchedRoute.methods.includes(method)) {
+        const allow = matchedRoute.methods.join(", ");
+        if (!res.headersSent) res.setHeader("Allow", allow);
+        return send(405, {
+          error: {
+            code: "E_METHOD_NOT_ALLOWED",
+            message: `该路径不支持 ${method} 方法，允许：${allow}`,
+            details: { method, allowed: matchedRoute.methods }
+          }
+        });
+      }
+
       if (method === "GET" && pathname === "/health") {
         await store.read();
         return send(200, { ok: true, service: "rubbing-repair-api", routes: ROUTES });

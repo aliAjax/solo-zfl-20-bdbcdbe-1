@@ -11,17 +11,29 @@ node server.js                 # 默认 http://127.0.0.1:3020
 PORT=8080 HOST=0.0.0.0 DB_FILE=/data/rubbing/db.json SEED_DEMO=0 node server.js
 ```
 
-首次启动若 `data/db.json` 不存在，会自动写入一条演示拓片和两个待修缺损项；
-设 `SEED_DEMO=0` 则使用空库启动。健康检查：`GET /health`。
+## 初始数据与重置
+
+仓库自带固定种子文件 `data/db.json`（时间戳固定为 `2026-01-01T00:00:00.000Z`），
+内容为 1 张演示拓片 `TP-清-014` + 2 个待修缺损项。因此：
+
+- **首次启动和重复启动结果一致**：文件存在就读文件，内容与 `initialData()` 逐字段相同；
+- 想恢复出厂状态：删除 `data/db.json` 后重启，会重新生成同一份种子；
+- 空库启动：`SEED_DEMO=0 node server.js`（文件不存在时不写种子）；
+- 自定义数据位置：`DB_FILE=/path/to/db.json`。
 
 ## 运行测试
 
 ```bash
-npm test          # node --test，18 个用例，无需先启动服务
+npm test          # node --test，自动化用例：37 个，无需先启动服务
 ```
 
-测试覆盖：状态全流转、各类重复请求拦截、并发收录/并发完工、缺照片缺结果回滚、
-磁盘写入失败回滚、原子落盘崩溃恢复。
+用例数量由测试自身校验（`test/docs.test.js` 会统计 `test/` 下全部
+`*.test.js` 的声明数并与本数字比对；公共工具放在 `testutil/` 不计入），
+增删测试时请同步更新这里的数字。
+
+测试覆盖：初始化确定性与重启一致性、状态全流转、各类重复请求拦截、
+并发收录/并发完工、缺照片缺结果回滚、字段类型校验、畸形百分号编码、
+方法不允许（405）、磁盘写入失败回滚、原子落盘崩溃恢复、文档与代码一致性。
 
 ## 领域模型与状态机
 
@@ -132,11 +144,16 @@ npm test          # node --test，18 个用例，无需先启动服务
 | 400 | `E_INVALID_DAMAGE_IDS` / `E_INVALID_RESULTS` | 字段不是非空数组 |
 | 400 | `E_RESULT_NOT_IN_BATCH` | 完工结果夹带非本批缺损项 |
 | 400 | `E_FIELD_IMMUTABLE` | PATCH 试图改状态等受控字段 |
+| 400 | `E_INVALID_STATUS` | `/damages?status=` 传入 pending/in_repair/repaired 之外的值 |
+| 404 | `E_ROUTE_NOT_FOUND` | 请求了不存在的路径（响应附带全部可用路由） |
 | 404 | `E_RUBBING_NOT_FOUND` / `E_DAMAGE_NOT_FOUND` / `E_BATCH_NOT_FOUND` | 资源不存在 |
+| 405 | `E_METHOD_NOT_ALLOWED` | 路径存在但 HTTP 方法不支持；响应带 `Allow` 头列出允许的方法，details 含 method/allowed |
 | 409 | `E_CODE_DUPLICATE` | 拓片编号重复 |
 | 409 | `E_CROSS_RUBBING_BATCH` | 跨拓片混批 |
 | 409 | `E_NOT_PENDING` / `E_ALREADY_COLLECTED` | 收录非待修项 / 重复收录 |
+| 409 | `E_NOT_EDITABLE` | 非待修缺损项不允许 PATCH |
 | 409 | `E_BATCH_NOT_STARTED` / `E_ALREADY_STARTED` / `E_ALREADY_COMPLETED` | 非法状态流转（含重复完工） |
+| 413 | `E_BODY_TOO_LARGE` | 请求体超过 1MB |
 | 422 | `E_INCOMPLETE_RESULT` | 缺损项缺修补照片或缺修补结果，整批回滚 |
 | 500 | `E_INTERNAL` | 落盘等服务端异常（事务回滚后返回） |
 
@@ -166,10 +183,10 @@ curl -s -X POST http://127.0.0.1:3020/batches/$BID/complete \
 ## 目录结构
 
 ```
-server.js          启动入口（HTTP 监听）
-src/db.js          存储层：原子落盘 + 串行事务
-src/app.js         路由与全部业务规则（状态机/校验）
-test/api.test.js   自动化测试（18 例）
-test/helpers.js    测试用隔离服务与请求工具
-data/db.json       持久化数据（运行时生成）
+server.js              启动入口（HTTP 监听）
+src/db.js              存储层：原子落盘 + 串行事务（含固定种子 initialData）
+src/app.js             路由与全部业务规则（状态机/校验/405）
+test/*.test.js         自动化测试（37 例，按主题分 6 个文件）
+testutil/helpers.js    测试公共工具（隔离服务与请求工具，不计入用例）
+data/db.json           随仓库交付的固定种子；运行后即持久化数据
 ```

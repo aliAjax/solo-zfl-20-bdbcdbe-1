@@ -10,7 +10,7 @@ const {
   createDamage,
   createBatch,
   goodResults
-} = require("./helpers");
+} = require("../testutil/helpers");
 
 /** 每类“伪装成字符串”的非法标量：空数组、非空数组、对象、数字、布尔、null。 */
 const NON_STRING = [[], ["x"], { a: 1 }, 42, 12.5, true, null];

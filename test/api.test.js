@@ -10,7 +10,7 @@ const {
   createDamage,
   createBatch,
   goodResults
-} = require("./helpers");
+} = require("../testutil/helpers");
 
 // ---------- 基础与唯一性 ----------
 
