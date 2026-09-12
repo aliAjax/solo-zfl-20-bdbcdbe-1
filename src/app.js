@@ -34,15 +34,15 @@ const MAX_BODY_BYTES = 1024 * 1024;
  * 顺序：更具体的子路径放在通配资源之前。
  */
 const ROUTE_PATTERNS = [
-  { regex: /^\/health$/, methods: ["GET"] },
-  { regex: /^\/rubbings$/, methods: ["GET", "POST"] },
-  { regex: /^\/rubbings\/[^/]+\/damages$/, methods: ["GET", "POST"] },
-  { regex: /^\/damages$/, methods: ["GET"] },
+  { regex: /^\/health$/, methods: ["GET", "HEAD"] },
+  { regex: /^\/rubbings$/, methods: ["GET", "HEAD", "POST"] },
+  { regex: /^\/rubbings\/[^/]+\/damages$/, methods: ["GET", "HEAD", "POST"] },
+  { regex: /^\/damages$/, methods: ["GET", "HEAD"] },
   { regex: /^\/damages\/[^/]+$/, methods: ["PATCH"] },
-  { regex: /^\/batches$/, methods: ["GET", "POST"] },
+  { regex: /^\/batches$/, methods: ["GET", "HEAD", "POST"] },
   { regex: /^\/batches\/[^/]+\/start$/, methods: ["POST"] },
   { regex: /^\/batches\/[^/]+\/complete$/, methods: ["POST"] },
-  { regex: /^\/batches\/[^/]+$/, methods: ["GET"] }
+  { regex: /^\/batches\/[^/]+$/, methods: ["GET", "HEAD"] }
 ];
 
 function makeId(prefix) {
@@ -473,13 +473,20 @@ function createHandler(store) {
   async function handle(req, res) {
     const url = new URL(req.url, "http://localhost");
     const { pathname } = url;
-    const method = req.method;
+    const actualMethod = req.method;
+    const isHead = actualMethod === "HEAD";
+    // HEAD 与 GET 走同一套处理逻辑，仅在输出时去掉响应体。
+    const method = isHead ? "GET" : actualMethod;
 
     const send = (status, payload) => {
-      if (!res.headersSent) {
-        res.writeHead(status, { "Content-Type": "application/json; charset=utf-8" });
-      }
-      res.end(JSON.stringify(payload, null, 2));
+      const json = JSON.stringify(payload, null, 2);
+      const headers = {
+        "Content-Type": "application/json; charset=utf-8",
+        "Content-Length": Buffer.byteLength(json)
+      };
+      if (!res.headersSent) res.writeHead(status, headers);
+      // HEAD：与对应 GET 同状态、同响应头，但响应体必须为空。
+      res.end(isHead ? "" : json);
     };
     const ok = (status, data) => send(status, { data });
     const fail = (err) => {
@@ -491,14 +498,14 @@ function createHandler(store) {
     try {
       // 路径命中已知资源但方法不被支持：405，附带允许的方法列表。
       const matchedRoute = ROUTE_PATTERNS.find((p) => p.regex.test(pathname));
-      if (matchedRoute && !matchedRoute.methods.includes(method)) {
+      if (matchedRoute && !matchedRoute.methods.includes(actualMethod)) {
         const allow = matchedRoute.methods.join(", ");
         if (!res.headersSent) res.setHeader("Allow", allow);
         return send(405, {
           error: {
             code: "E_METHOD_NOT_ALLOWED",
-            message: `该路径不支持 ${method} 方法，允许：${allow}`,
-            details: { method, allowed: matchedRoute.methods }
+            message: `该路径不支持 ${actualMethod} 方法，允许：${allow}`,
+            details: { method: actualMethod, allowed: matchedRoute.methods }
           }
         });
       }

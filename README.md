@@ -24,7 +24,7 @@ PORT=8080 HOST=0.0.0.0 DB_FILE=/data/rubbing/db.json SEED_DEMO=0 node server.js
 ## 运行测试
 
 ```bash
-npm test          # node --test，自动化用例：37 个，无需先启动服务
+npm test          # node --test，自动化用例：42 个，无需先启动服务
 ```
 
 用例数量由测试自身校验（`test/docs.test.js` 会统计 `test/` 下全部
@@ -33,7 +33,7 @@ npm test          # node --test，自动化用例：37 个，无需先启动服�
 
 测试覆盖：初始化确定性与重启一致性、状态全流转、各类重复请求拦截、
 并发收录/并发完工、缺照片缺结果回滚、字段类型校验、畸形百分号编码、
-方法不允许（405）、磁盘写入失败回滚、原子落盘崩溃恢复、文档与代码一致性。
+HEAD 与方法不允许（405）、磁盘写入失败回滚、原子落盘崩溃恢复、文档与代码一致性。
 
 ## 领域模型与状态机
 
@@ -70,6 +70,12 @@ npm test          # node --test，自动化用例：37 个，无需先启动服�
 
 所有请求/响应均为 JSON；成功响应包一层 `{"data": ...}`，
 错误响应为 `{"error": {"code": ..., "message": ..., "details"?: ...}}`。
+
+**HEAD**：所有 GET 资源同时支持 HEAD（健康检查、拓片列表、缺损列表/筛选、
+拓片缺损列表、批次列表、批次详情）。HEAD 与对应 GET 的状态码、`Content-Type`、
+`Content-Length`（等于 GET 响应体字节数）完全一致，但**不返回响应体**。
+GET 资源在 405 的 `Allow` 头中列出 `GET, HEAD`（另有写方法时追加）。
+写资源（建批/开工/完工/PATCH）不支持 HEAD，仍返回 405。
 
 ### 拓片
 
@@ -186,7 +192,7 @@ curl -s -X POST http://127.0.0.1:3020/batches/$BID/complete \
 server.js              启动入口（HTTP 监听）
 src/db.js              存储层：原子落盘 + 串行事务（含固定种子 initialData）
 src/app.js             路由与全部业务规则（状态机/校验/405）
-test/*.test.js         自动化测试（37 例，按主题分 6 个文件）
+test/*.test.js         自动化测试（42 例，按主题分 7 个文件）
 testutil/helpers.js    测试公共工具（隔离服务与请求工具，不计入用例）
 data/db.json           随仓库交付的固定种子；运行后即持久化数据
 ```

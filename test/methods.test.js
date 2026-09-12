@@ -14,16 +14,16 @@ test("[方法限制] 路径存在但方法不被支持 → 405 + Allow 头 + 明
   const { baseUrl } = await startServer(t);
 
   const cases = [
-    { method: "DELETE", path: "/health", allow: "GET" },
-    { method: "PUT", path: "/rubbings", allow: "GET, POST" },
-    { method: "PATCH", path: "/rubbings", allow: "GET, POST" },
-    { method: "DELETE", path: "/damages", allow: "GET" },
-    { method: "PUT", path: "/batches", allow: "GET, POST" },
+    { method: "DELETE", path: "/health", allow: "GET, HEAD" },
+    { method: "PUT", path: "/rubbings", allow: "GET, HEAD, POST" },
+    { method: "PATCH", path: "/rubbings", allow: "GET, HEAD, POST" },
+    { method: "DELETE", path: "/damages", allow: "GET, HEAD" },
+    { method: "PUT", path: "/batches", allow: "GET, HEAD, POST" },
     { method: "GET", path: "/batches/any/start", allow: "POST" },
     { method: "GET", path: "/batches/any/complete", allow: "POST" },
-    { method: "DELETE", path: "/batches/any", allow: "GET" },
+    { method: "DELETE", path: "/batches/any", allow: "GET, HEAD" },
     { method: "GET", path: "/damages/any", allow: "PATCH" },
-    { method: "PUT", path: "/rubbings/r1/damages", allow: "GET, POST" }
+    { method: "PUT", path: "/rubbings/r1/damages", allow: "GET, HEAD, POST" }
   ];
 
   for (const c of cases) {
