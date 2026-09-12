@@ -6,7 +6,7 @@
       "source": "地方碑刻残页",
       "paperSize": "42x68cm",
       "note": "边缘有旧折痕",
-      "createdAt": "2026-06-16T00:00:00.000Z"
+      "createdAt": "2026-09-12T11:54:58.639Z"
     }
   ],
   "damages": [
@@ -20,7 +20,8 @@
       "status": "pending",
       "repairNote": "",
       "batchId": null,
-      "createdAt": "2026-06-16T00:00:00.000Z",
+      "createdAt": "2026-09-12T11:54:58.639Z",
+      "startedAt": null,
       "repairedAt": null
     },
     {
@@ -33,7 +34,8 @@
       "status": "pending",
       "repairNote": "",
       "batchId": null,
-      "createdAt": "2026-06-16T00:00:00.000Z",
+      "createdAt": "2026-09-12T11:54:58.639Z",
+      "startedAt": null,
       "repairedAt": null
     }
   ],
