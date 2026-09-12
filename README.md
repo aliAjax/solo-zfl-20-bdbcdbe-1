@@ -127,6 +127,7 @@ npm test          # node --test，18 个用例，无需先启动服务
 |---|---|---|
 | 400 | `E_MISSING_FIELD` / `E_BAD_JSON` | 缺必填字段/字段为空字符串 / JSON 非法 |
 | 400 | `E_INVALID_TYPE` | 文本或照片字段收到数组/对象/数字/布尔/null（必须是非空字符串），错误响应 details 指明具体字段与实际类型 |
+| 400 | `E_MALFORMED_PATH` | 路径参数含畸形百分号编码（如 `/batches/%E0%A4%A/start`），details 给出参数名与原始片段；解码在任何读写之前完成，不落库 |
 | 400 | `E_DUPLICATE_IN_REQUEST` | damageIds 或 results 内部重复 |
 | 400 | `E_INVALID_DAMAGE_IDS` / `E_INVALID_RESULTS` | 字段不是非空数组 |
 | 400 | `E_RESULT_NOT_IN_BATCH` | 完工结果夹带非本批缺损项 |

@@ -68,6 +68,23 @@ function optionalString(body, field, fallback = "") {
   return value.trim();
 }
 
+/**
+ * 解码路径参数。畸形百分号编码（如 %E0%A4%A、%zz）会让 decodeURIComponent
+ * 抛出 URIError；统一转成 400 请求错误，而不是让处理器落到 500。
+ */
+function decodeParam(raw, label) {
+  try {
+    return decodeURIComponent(raw);
+  } catch {
+    throw new ApiError(
+      400,
+      "E_MALFORMED_PATH",
+      `路径参数${label ? `（${label}）` : ""}含畸形百分号编码：${raw}`,
+      { parameter: label || null, raw }
+    );
+  }
+}
+
 function createHandler(store) {
   // ---------- 纯查询 ----------
 
@@ -472,7 +489,7 @@ function createHandler(store) {
 
       const rubbingDamagesMatch = pathname.match(/^\/rubbings\/([^/]+)\/damages$/);
       if (rubbingDamagesMatch) {
-        const rubbingId = decodeURIComponent(rubbingDamagesMatch[1]);
+        const rubbingId = decodeParam(rubbingDamagesMatch[1], "rubbingId");
         if (method === "GET") {
           const db = await store.read();
           findRubbing(db, rubbingId);
@@ -505,7 +522,7 @@ function createHandler(store) {
 
       const damageMatch = pathname.match(/^\/damages\/([^/]+)$/);
       if (damageMatch && method === "PATCH") {
-        const damageId = decodeURIComponent(damageMatch[1]);
+        const damageId = decodeParam(damageMatch[1], "damageId");
         const body = await parseBody(req);
         const data = await store.tx((db) => patchDamage(db, damageId, body));
         return ok(200, data);
@@ -525,12 +542,12 @@ function createHandler(store) {
       const batchMatch = pathname.match(/^\/batches\/([^/]+)$/);
       if (batchMatch && method === "GET") {
         const db = await store.read();
-        return ok(200, enrichBatch(db, findBatch(db, decodeURIComponent(batchMatch[1]))));
+        return ok(200, enrichBatch(db, findBatch(db, decodeParam(batchMatch[1], "batchId"))));
       }
 
       const startMatch = pathname.match(/^\/batches\/([^/]+)\/start$/);
       if (startMatch && method === "POST") {
-        const data = await store.tx((db) => startBatch(db, decodeURIComponent(startMatch[1])));
+        const data = await store.tx((db) => startBatch(db, decodeParam(startMatch[1], "batchId")));
         return ok(200, data);
       }
 
@@ -538,7 +555,7 @@ function createHandler(store) {
       if (completeMatch && method === "POST") {
         const body = await parseBody(req);
         const data = await store.tx((db) =>
-          completeBatch(db, decodeURIComponent(completeMatch[1]), body)
+          completeBatch(db, decodeParam(completeMatch[1], "batchId"), body)
         );
         return ok(200, data);
       }
